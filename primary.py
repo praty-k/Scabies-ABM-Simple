@@ -67,11 +67,14 @@ def simulate(beta, InfD, ImmD, NumSteps, TargetPopSize):
     PopSize = np.sum(GrpSizes)
     #ContactMatrix = rng.random((NumGrps, NumGrps))
     
-    ContactMatrix = np.array([[0.72072839, 0.71123776, 0.20269503, 0.0366554 , 0.30379952],
-           [0.1571363 , 0.39578848, 0.97934612, 0.18107137, 0.31887394],
-           [0.72511432, 0.50918278, 0.04392814, 0.16169002, 0.93524955],
-           [0.10316499, 0.63509279, 0.79232565, 0.26543906, 0.725078  ],
-           [0.16989518, 0.28475027, 0.31182203, 0.99643499, 0.2145723 ]])
+    # ContactMatrix = np.array([[0.72072839, 0.71123776, 0.20269503, 0.0366554 , 0.30379952],
+    #        [0.1571363 , 0.39578848, 0.97934612, 0.18107137, 0.31887394],
+    #        [0.72511432, 0.50918278, 0.04392814, 0.16169002, 0.93524955],
+    #        [0.10316499, 0.63509279, 0.79232565, 0.26543906, 0.725078  ],
+    #        [0.16989518, 0.28475027, 0.31182203, 0.99643499, 0.2145723 ]])
+    
+    ContactMatrix = np.ones((NumGrps, NumGrps))
+    
     State = np.zeros(TargetPopSize)
     Events = np.arange(0, 5*NumGrps, 1) # 5 because there are five states, S, Ia, Ib, Ra, Rb
     S, Ia, Ib, Ra, Rb = init_state_vars(NumGrps, GrpSizes)
@@ -91,18 +94,46 @@ def simulate(beta, InfD, ImmD, NumSteps, TargetPopSize):
         Ss[counter, :], Ias[counter, :], Ibs[counter, :], Ras[counter, :], Rbs[counter, :] = S, Ia, Ib, Ra, Rb
     
     return ts, Ss, Ias, Ibs, Ras, Rbs
-    
+
+def calibrate(beta, InfD, ImmD):
+    NumSteps = 50000
+    PopSize = 1000
+    ts, Ss, Ias, Ibs, Ras, Rbs = simulate(beta, InfD, ImmD, NumSteps, PopSize)
+    return ts, Ss/PopSize, Ias/PopSize, Ibs/PopSize, Ras/PopSize, Rbs/PopSize
+
+def sampler(SamplingTimes, ts, xs):
+    Sample = np.empty(SamplingTimes.shape)
+    Sample[:] = np.nan
+    for counter1, SamplingTime in enumerate(SamplingTimes):
+        for counter2, t in enumerate(ts):
+            if t>SamplingTime:
+                Sample[counter1] = xs[counter2-1]
+                break
+    return Sample
 ####
 ''' Scheme = SIIRRS '''
 
 # Input params
-beta = 1.5
-InfD = 2
-ImmD = 1
-NumSteps = 50000
-PopSize = 1000
+beta = 2/7 # in 1/days
+InfD = 2*7 # in days
+ImmD = 1*7 # in days
 
-ts, Ss, Ias, Ibs, Ras, Rbs = simulate(beta, InfD, ImmD, NumSteps, PopSize)
-plt.plot(ts, (np.sum(Ias, 1) + np.sum(Ibs, 1))/PopSize, label = 'Infected')
-plt.plot(ts, np.sum(Ss, 1)/PopSize, label = 'Susceptible')
-print(ts[20], Ias[20], Ibs[20])
+
+ts, ss, ias, ibs, ras, rbs = calibrate(beta, InfD, ImmD)
+plt.plot(ts, np.sum(ss, 1), label = 'Susceptible')
+plt.plot(ts, (np.sum(ias, 1)), label = 'Infected (a)')
+plt.plot(ts, (np.sum(ibs, 1)), label = 'Infected (b)')
+plt.plot(ts, np.sum(ras, 1), label = 'Recovered (a)')
+plt.plot(ts, np.sum(rbs, 1), label = 'Recovered (b)')
+plt.legend()
+print(ts[20], ias[20], ibs[20])
+
+
+SamplingTimes = np.arange(0, 400, 15)
+
+s_sample = sampler(SamplingTimes, ts, np.sum(ss, 1))
+i_sample = sampler(SamplingTimes, ts, np.sum(ias, 1) + np.sum(ibs, 1))
+r_sample = sampler(SamplingTimes, ts, np.sum(ras, 1) + np.sum(rbs, 1))
+
+
+    
