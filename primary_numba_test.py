@@ -1,18 +1,21 @@
 # -*- coding: utf-8 -*-
 """
-Created on Fri Mar 21 21:25:18 2025
+Created on Tue Apr  1 13:43:22 2025
 
-@author: PKollepara
+@author: pkollepara
 """
+
 
 import numpy as np
 import matplotlib.pyplot as plt
 import time
-#import seaborn as sns
-rng = np.random.default_rng(seed = 42)
+import seaborn as sns
+from numba import jit
+np.random.seed(seed = 42)
 
 #####
 
+@jit
 def create_status_vars(PopSize, GrpSizes, NumGrps):
     ID = np.empty((NumGrps, np.max(GrpSizes)))
     Status = np.empty((NumGrps, np.max(GrpSizes)))
@@ -23,6 +26,7 @@ def create_status_vars(PopSize, GrpSizes, NumGrps):
         Status[ng, 0:GrpSizes[ng]] = 0
     return Status   
 
+@jit
 def init_vars(PopSize, NumGrps, GrpSizes): #Initialises with one infection in each group
     S = GrpSizes-1 #Needs to be an array containing number of people in each S compartment
     Ia = np.ones(NumGrps)
@@ -34,6 +38,7 @@ def init_vars(PopSize, NumGrps, GrpSizes): #Initialises with one infection in ea
     return S, Ia, Ib, Ra, Rb, Status    
 
 # Computing Rates
+@jit
 def compute_rates_probs(beta, gamma, mu, PopSize, S, Ia, Ib, Ra, Rb, ContactMatrix):
     RatesLeaveS = beta/PopSize * S * (np.sum(ContactMatrix*Ia, 1) + np.sum(ContactMatrix*Ib, 1))
     RatesLeaveIa = gamma*Ia
@@ -47,6 +52,7 @@ def compute_rates_probs(beta, gamma, mu, PopSize, S, Ia, Ib, Ra, Rb, ContactMatr
     return RateSum, AllPs, AllRates
 
 ## A function that takes Event as input and does the operation on state variables
+@jit
 def step(Event, S, Ia, Ib, Ra, Rb, Status, GrpSizes, NumGrps, rnd):
     if Event<NumGrps:
         S[Event]-=1
@@ -95,7 +101,7 @@ def step(Event, S, Ia, Ib, Ra, Rb, Status, GrpSizes, NumGrps, rnd):
         Status[GrpNum, SelectedAgent] = 0
     return S, Ia, Ib, Ra, Rb, Status
 
-
+@jit
 def simulate(beta, InfD, ImmD, NumSteps, TargetPopSize):
     gamma = 2/InfD
     mu = 2/ImmD
@@ -126,15 +132,16 @@ def simulate(beta, InfD, ImmD, NumSteps, TargetPopSize):
     Ss[0, :], Ias[0, :], Ibs[0, :], Ras[0, :], Rbs[0, :] = S, Ia, Ib, Ra, Rb
     
     #Pre-generated random numbers
-    rnds = rng.uniform(0, 1, NumSteps)
+    rnds = np.random.uniform(0, 1, size = NumSteps)
     for counter in range(1, NumSteps):
         if np.any(S<0) or np.any(Ia<0) or np.any(Ib<0) or np.any(Ra<0) or np.any(Rb<0):
             print('Error, negative values')
             break
         elif np.sum(Ia + Ib)!=0:
             RateSum, AllPs, AllRates = compute_rates_probs(beta, gamma, mu, PopSize, S, Ia, Ib, Ra, Rb, ContactMatrix)
-            Event = rng.choice(Events, size = 1, p = AllPs)[0]
-            EventTimeStep = rng.exponential(scale = 1/RateSum)
+            #Event = np.random.choice(Events, size = 1, p = AllPs)[0]
+            Event = Events[np.searchsorted(np.cumsum(AllPs), np.random.rand(1)[0])]
+            EventTimeStep = np.random.exponential(scale = 1/RateSum)
             ts[counter] = ts[counter-1]+EventTimeStep
             S, Ia, Ib, Ra, Rb, StatusFull = step(Event, S, Ia, Ib, Ra, Rb, StatusFull, GrpSizes, NumGrps, rnds[counter])
             StatusFlat = StatusFull.flatten()
@@ -189,6 +196,7 @@ def calibrate2(beta, InfD, ImmD, batch_size = 1, random_state = None):
             summary_stat[jj] = 0.0
     return (SamplingTimes, s_sample, i_sample, r_sample), np.array([summary_stat])
 
+#%%
 if __name__ == '__main__':
     ''' Scheme = SIIRRS '''
 
@@ -238,7 +246,7 @@ if __name__ == '__main__':
                 plt.plot(ts, np.sum(ras, 1), label = 'Recovered (a)')
                 plt.plot(ts, np.sum(rbs, 1), label = 'Recovered (b)')
                 plt.legend()
-                plt.savefig(f'ParamSpaceExplore/{beta=:.2f}_{InfD=:.2f}_{ImmD=:.2f}.png', dpi = 300)
+                plt.savefig(f'SimTimeExploreNumba/{beta=:.2f}_{InfD=:.2f}_{ImmD=:.2f}.png', dpi = 300)
                 plt.close()
                 Prev = (np.sum(ias, 1) + np.sum(ibs, 1))[-1]
                 Prevalence[ii, jj, kk] = Prev
@@ -247,8 +255,8 @@ if __name__ == '__main__':
     print('Total time: ', total_end - total_start)
     
     #%%
-    np.savez('ParamSpaceExplore/Prevalence', Prevalence)
-    np.savez('ParamSpaceExplore/SimTime', SimTime)
+    np.savez('SimTimeExploreNumba/Prevalence', Prevalence)
+    np.savez('SimTimeExploreNumba/SimTime', SimTime)
     
     #%%
     for ii, beta in enumerate(betas):
@@ -256,5 +264,5 @@ if __name__ == '__main__':
         ax.invert_yaxis()
         ax.set(xlabel = 'Immune Duration', ylabel='Infectious Duration')
         ax.set_title(f'Transmissibility = {beta:.2f}')
-        plt.savefig(f'ParamSpaceExplore/Heatmap_beta_{beta:.2f}.png')
+        plt.savefig(f'SimTimeExploreNumba/Heatmap_beta_{beta:.2f}.png')
         plt.close()
