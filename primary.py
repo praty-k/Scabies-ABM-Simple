@@ -7,7 +7,8 @@ Created on Fri Mar 21 21:25:18 2025
 
 import numpy as np
 import matplotlib.pyplot as plt
-
+import time
+#import seaborn as sns
 rng = np.random.default_rng(seed = 42)
 
 #####
@@ -108,18 +109,19 @@ def simulate(beta, InfD, ImmD, NumSteps, TargetPopSize):
     PopSize = np.sum(GrpSizes)
     
     # The matrix below was randomly generated.
-    # ContactMatrix = np.array([[0.72072839, 0.71123776, 0.20269503, 0.0366554 , 0.30379952],
-    #        [0.1571363 , 0.39578848, 0.97934612, 0.18107137, 0.31887394],
-    #        [0.72511432, 0.50918278, 0.04392814, 0.16169002, 0.93524955],
-    #        [0.10316499, 0.63509279, 0.79232565, 0.26543906, 0.725078  ],
-    #        [0.16989518, 0.28475027, 0.31182203, 0.99643499, 0.2145723 ]])
+    ContactMatrix = np.array([[0.72072839, 0.71123776, 0.20269503, 0.0366554 , 0.30379952],
+           [0.1571363 , 0.39578848, 0.97934612, 0.18107137, 0.31887394],
+           [0.72511432, 0.50918278, 0.04392814, 0.16169002, 0.93524955],
+           [0.10316499, 0.63509279, 0.79232565, 0.26543906, 0.725078  ],
+           [0.16989518, 0.28475027, 0.31182203, 0.99643499, 0.2145723 ]])
     
-    ContactMatrix = np.ones((NumGrps, NumGrps))
+    #ContactMatrix = np.ones((NumGrps, NumGrps))
     
     State = np.zeros(TargetPopSize)
     Events = np.arange(0, 5*NumGrps, 1) # 5 because there are five states, S, Ia, Ib, Ra, Rb
-    S, Ia, Ib, Ra, Rb, Status = init_vars(PopSize, NumGrps, GrpSizes)
+    S, Ia, Ib, Ra, Rb, StatusFull = init_vars(PopSize, NumGrps, GrpSizes)
     ts = np.zeros(NumSteps)
+    StatusBrief = np.empty((NumSteps, PopSize))
     Ss, Ias, Ibs, Ras, Rbs = np.zeros((NumSteps, NumGrps)), np.zeros((NumSteps, NumGrps)), np.zeros((NumSteps, NumGrps)), np.zeros((NumSteps, NumGrps)), np.zeros((NumSteps, NumGrps))
     Ss[0, :], Ias[0, :], Ibs[0, :], Ras[0, :], Rbs[0, :] = S, Ia, Ib, Ra, Rb
     
@@ -134,11 +136,13 @@ def simulate(beta, InfD, ImmD, NumSteps, TargetPopSize):
             Event = rng.choice(Events, size = 1, p = AllPs)[0]
             EventTimeStep = rng.exponential(scale = 1/RateSum)
             ts[counter] = ts[counter-1]+EventTimeStep
-            S, Ia, Ib, Ra, Rb, Status = step(Event, S, Ia, Ib, Ra, Rb, Status, GrpSizes, NumGrps, rnds[counter])
-
+            S, Ia, Ib, Ra, Rb, StatusFull = step(Event, S, Ia, Ib, Ra, Rb, StatusFull, GrpSizes, NumGrps, rnds[counter])
+            StatusFlat = StatusFull.flatten()
+            StatusFlat = StatusFlat[~np.isnan(StatusFlat)]
+            
         Ss[counter, :], Ias[counter, :], Ibs[counter, :], Ras[counter, :], Rbs[counter, :] = S, Ia, Ib, Ra, Rb
-    
-    return ts, Ss, Ias, Ibs, Ras, Rbs, Status, PopSize
+        StatusBrief[counter, :] = (StatusFlat == 1) | (StatusFlat == 2)
+    return ts, Ss, Ias, Ibs, Ras, Rbs, StatusBrief, PopSize
 
 def calibrate(beta, InfD, ImmD):
     NumSteps = 50000
@@ -155,30 +159,94 @@ def sampler(SamplingTimes, ts, xs):
                 Sample[counter1] = xs[counter2-1]
                 break
     return Sample
-####
-''' Scheme = SIIRRS '''
 
-# Input params
-beta = 5/7 # in 1/days
-InfD = 2*7 # in days
-ImmD = 1*7 # in days
+def sampler_for_status(SamplingTimes, ts, status):
+    Sample = np.empty((SamplingTimes.shape[0], status.shape[1]))
+    Sample[:] = np.nan
+    for counter1, SamplingTime in enumerate(SamplingTimes):
+        for counter2, t in enumerate(ts):
+            if t>SamplingTime:
+                Sample[counter1, :] = status[counter2-1, :]
+                break
+    return Sample
 
+def calibrate2(beta, InfD, ImmD):
+    NumSteps = 50000
+    TargetPopSize = 1000
+    ts, Ss, Ias, Ibs, Ras, Rbs, Status, PopSize = simulate(beta, InfD, ImmD, NumSteps, TargetPopSize)
+    SamplingTimes = np.arange(0, ts[-1], 30)
+    s_sample = sampler(SamplingTimes, ts, np.sum(Ss, 1))
+    i_sample = sampler(SamplingTimes, ts, np.sum(Ias, 1) + np.sum(Ibs, 1))
+    r_sample = sampler(SamplingTimes, ts, np.sum(Ras, 1) + np.sum(Rbs, 1))
+    summary_stat = sampler(SamplingTimes, ts, np.sum(Ias, 1) + np.sum(Ibs, 1))[-4:]/PopSize
+    return (SamplingTimes, s_sample, i_sample, r_sample), summary_stat
 
-ts, ss, ias, ibs, ras, rbs, status = calibrate(beta, InfD, ImmD)
-plt.plot(ts, np.sum(ss, 1), label = 'Susceptible')
-plt.plot(ts, (np.sum(ias, 1)), label = 'Infected (a)')
-plt.plot(ts, (np.sum(ibs, 1)), label = 'Infected (b)')
-plt.plot(ts, np.sum(ras, 1), label = 'Recovered (a)')
-plt.plot(ts, np.sum(rbs, 1), label = 'Recovered (b)')
-plt.legend()
-print(ts[20], ias[20], ibs[20])
+if __name__ == '__main__':
+    ''' Scheme = SIIRRS '''
 
-
-SamplingTimes = np.arange(0, 400, 15)
-
-s_sample = sampler(SamplingTimes, ts, np.sum(ss, 1))
-i_sample = sampler(SamplingTimes, ts, np.sum(ias, 1) + np.sum(ibs, 1))
-r_sample = sampler(SamplingTimes, ts, np.sum(ras, 1) + np.sum(rbs, 1))
-
-
+    # Input params
+    beta = 5/7 # in 1/days
+    InfD = 2*7 # in days
+    ImmD = 1*7 # in days
     
+    
+    ts, ss, ias, ibs, ras, rbs, status = calibrate(beta, InfD, ImmD)
+    plt.plot(ts, np.sum(ss, 1), label = 'Susceptible')
+    plt.plot(ts, (np.sum(ias, 1)), label = 'Infected (a)')
+    plt.plot(ts, (np.sum(ibs, 1)), label = 'Infected (b)')
+    plt.plot(ts, np.sum(ras, 1), label = 'Recovered (a)')
+    plt.plot(ts, np.sum(rbs, 1), label = 'Recovered (b)')
+    plt.legend()
+    
+    print(ts[20], ias[20], ibs[20])
+    
+    
+    SamplingTimes = np.arange(0, 400, 15)
+    
+    s_sample = sampler(SamplingTimes, ts, np.sum(ss, 1))
+    i_sample = sampler(SamplingTimes, ts, np.sum(ias, 1) + np.sum(ibs, 1))
+    r_sample = sampler(SamplingTimes, ts, np.sum(ras, 1) + np.sum(rbs, 1))
+    
+    
+    status_sample = sampler_for_status(SamplingTimes, ts, status)
+        
+    #%%
+    total_start = time.time()
+    InfectiousDurations = np.arange(1, 9, 1)*7
+    ImmuneDurations = np.arange(1, 9, 1)*7
+    betas = np.arange(1, 15, 1)/7
+    
+    Prevalence = np.zeros((len(betas), len(InfectiousDurations), len(ImmuneDurations)))
+    SimTime = np.zeros((len(betas), len(InfectiousDurations), len(ImmuneDurations)))
+    for ii, beta in enumerate(betas):
+        for jj, InfD in enumerate(InfectiousDurations):
+            for kk, ImmD in enumerate(ImmuneDurations):
+                start = time.time()
+                ts, ss, ias, ibs, ras, rbs, status = calibrate(beta, InfD, ImmD)
+                end = time.time()
+                plt.plot(ts, np.sum(ss, 1), label = 'Susceptible')
+                plt.plot(ts, (np.sum(ias, 1)), label = 'Infected (a)')
+                plt.plot(ts, (np.sum(ibs, 1)), label = 'Infected (b)')
+                plt.plot(ts, np.sum(ras, 1), label = 'Recovered (a)')
+                plt.plot(ts, np.sum(rbs, 1), label = 'Recovered (b)')
+                plt.legend()
+                plt.savefig(f'ParamSpaceExplore/{beta=:.2f}_{InfD=:.2f}_{ImmD=:.2f}.png', dpi = 300)
+                plt.close()
+                Prev = (np.sum(ias, 1) + np.sum(ibs, 1))[-1]
+                Prevalence[ii, jj, kk] = Prev
+                SimTime[ii, jj, kk] = end-start
+    total_end = time.time()         
+    print('Total time: ', total_end - total_start)
+    
+    #%%
+    np.savez('ParamSpaceExplore/Prevalence', Prevalence)
+    np.savez('ParamSpaceExplore/SimTime', SimTime)
+    
+    #%%
+    for ii, beta in enumerate(betas):
+        ax=sns.heatmap(Prevalence[ii], annot = True, xticklabels=ImmuneDurations, yticklabels=InfectiousDurations, cmap = 'Blues')
+        ax.invert_yaxis()
+        ax.set(xlabel = 'Immune Duration', ylabel='Infectious Duration')
+        ax.set_title(f'Transmissibility = {beta:.2f}')
+        plt.savefig(f'ParamSpaceExplore/Heatmap_beta_{beta:.2f}.png')
+        plt.close()
