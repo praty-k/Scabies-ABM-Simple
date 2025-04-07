@@ -208,6 +208,9 @@ def calibrate2(beta, InfD, ImmD, batch_size = 1, random_state = None):
     else:
         # If an outbreak does not take off then return prevalence sample with zeros
         summary_stat = np.zeros(NumObs)
+        s_sample = np.ones(NumObs)*np.nan
+        i_sample = np.ones(NumObs)*np.nan
+        r_sample = np.ones(NumObs)*np.nan
     return (SamplingTimes, s_sample, i_sample, r_sample), np.array([summary_stat])
 
 
