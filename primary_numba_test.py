@@ -232,7 +232,7 @@ def calibrate_age_prev(beta, InfD, ImmD):
     return (SamplingTimes, i_sample), summary_stat
     #return summary_stat.flatten()
 
-def calibrate_status(beta, InfD, ImmD, batch_size = 1):
+def calibrate_status(beta, InfD, ImmD, batch_size = 1, random_state = None):
     NumSteps = 50000
     TargetPopSize = 1000
     ts, Ss, Ias, Ibs, Ras, Rbs, Status, PopSize, GrpSizes = simulate(beta, InfD, ImmD, NumSteps, TargetPopSize)
@@ -246,15 +246,18 @@ def calibrate_status(beta, InfD, ImmD, batch_size = 1):
     summary_stat = np.empty((NumObs, len(GrpSizes)))
     summary_stat[:] = np.nan
 
-    if ts[-1]>30*NumObs:
-        SamplingTimes = np.arange(0, ts[-1], 30)
-        Status_sample = sampler_for_status(SamplingTimes, ts, Status)[-NumObs:]
-        X = np.unique(Status_sample.T, return_counts=True, axis = 0)
-        for counter, Pathway in enumerate(Pathways):
-            for x, y in zip(X[0], X[1]):
-                if np.all(x == Pathway):
-                    PathwayCounts[counter] = y
-    else: # If outbreak dies out then the [0, 0, 0, 0] pathway has PopSize counts
+    if len(ts)>0:    
+        if ts[-1]>30*NumObs:
+            SamplingTimes = np.arange(0, ts[-1], 30)
+            Status_sample = sampler_for_status(SamplingTimes, ts, Status)[-NumObs:]
+            X = np.unique(Status_sample.T, return_counts=True, axis = 0)
+            for counter, Pathway in enumerate(Pathways):
+                for x, y in zip(X[0], X[1]):
+                    if np.all(x == Pathway):
+                        PathwayCounts[counter] = y
+        else: # If outbreak dies early then the [0, 0, 0, 0] pathway has PopSize counts
+            PathwayCounts[0] = PopSize
+    else: # If outbreak does not take off then the [0, 0, 0, 0] pathway has PopSize counts
         PathwayCounts[0] = PopSize
     
     PathwayPs = PathwayCounts/np.sum(PathwayCounts)
