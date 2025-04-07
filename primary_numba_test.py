@@ -192,19 +192,22 @@ def calibrate2(beta, InfD, ImmD, batch_size = 1, random_state = None):
     NumSteps = 50000
     TargetPopSize = 1000
     ts, Ss, Ias, Ibs, Ras, Rbs, Status, PopSize, GrpSizes = simulate(beta, InfD, ImmD, NumSteps, TargetPopSize)
-    SamplingTimes = np.arange(0, ts[-1], 30)
-    s_sample = sampler(SamplingTimes, ts, np.sum(Ss, 1))
-    i_sample = sampler(SamplingTimes, ts, np.sum(Ias, 1) + np.sum(Ibs, 1))
-    r_sample = sampler(SamplingTimes, ts, np.sum(Ras, 1) + np.sum(Rbs, 1))
     NumObs = 4
-    summary_stat = sampler(SamplingTimes, ts, np.sum(Ias, 1) + np.sum(Ibs, 1))[-NumObs:]/PopSize
-    # If an outbreak does not take off then return prevalence sample with zeros
-    if len(summary_stat) == 0:
+    SamplingTimes = np.arange(0, NumObs, 1)*30+364
+    if len(ts)>0:
+        
+        s_sample = sampler(SamplingTimes, ts, np.sum(Ss, 1))
+        i_sample = sampler(SamplingTimes, ts, np.sum(Ias, 1) + np.sum(Ibs, 1))
+        r_sample = sampler(SamplingTimes, ts, np.sum(Ras, 1) + np.sum(Rbs, 1))
+        
+        summary_stat = sampler(SamplingTimes, ts, np.sum(Ias, 1) + np.sum(Ibs, 1))[-NumObs:]/PopSize
+        # If outbreak dies out then replace NaNs in the prevalence sample with zeros
+        for jj in range(len(summary_stat)):
+            if np.isnan(summary_stat[jj]):
+                summary_stat[jj] = 0.0
+    else:
+        # If an outbreak does not take off then return prevalence sample with zeros
         summary_stat = np.zeros(NumObs)
-    # If outbreak dies out then replace NaNs in the prevalence sample with zeros
-    for jj in range(len(summary_stat)):
-        if np.isnan(summary_stat[jj]):
-            summary_stat[jj] = 0.0
     return (SamplingTimes, s_sample, i_sample, r_sample), np.array([summary_stat])
 
 
