@@ -9,7 +9,7 @@ Created on Tue Apr  1 13:43:22 2025
 import numpy as np
 import matplotlib.pyplot as plt
 import time
-import seaborn as sns
+#import seaborn as sns
 from numba import jit
 np.random.seed(seed = 42)
 
@@ -126,7 +126,8 @@ def simulate(beta, InfD, ImmD, NumSteps, TargetPopSize):
     State = np.zeros(TargetPopSize)
     Events = np.arange(0, 5*NumGrps, 1) # 5 because there are five states, S, Ia, Ib, Ra, Rb
     S, Ia, Ib, Ra, Rb, StatusFull = init_vars(PopSize, NumGrps, GrpSizes)
-    ts = np.zeros(NumSteps)
+    ts = np.empty(NumSteps)
+    ts[1:] = np.nan
     StatusBrief = np.empty((NumSteps, PopSize))
     Ss, Ias, Ibs, Ras, Rbs = np.zeros((NumSteps, NumGrps)), np.zeros((NumSteps, NumGrps)), np.zeros((NumSteps, NumGrps)), np.zeros((NumSteps, NumGrps)), np.zeros((NumSteps, NumGrps))
     Ss[0, :], Ias[0, :], Ibs[0, :], Ras[0, :], Rbs[0, :] = S, Ia, Ib, Ra, Rb
@@ -146,16 +147,25 @@ def simulate(beta, InfD, ImmD, NumSteps, TargetPopSize):
             S, Ia, Ib, Ra, Rb, StatusFull = step(Event, S, Ia, Ib, Ra, Rb, StatusFull, GrpSizes, NumGrps, rnds[counter])
             StatusFlat = StatusFull.flatten()
             StatusFlat = StatusFlat[~np.isnan(StatusFlat)]
-            
+        else:
+            break
         Ss[counter, :], Ias[counter, :], Ibs[counter, :], Ras[counter, :], Rbs[counter, :] = S, Ia, Ib, Ra, Rb
         StatusBrief[counter, :] = (StatusFlat == 1) | (StatusFlat == 2)
-    return ts, Ss, Ias, Ibs, Ras, Rbs, StatusBrief, PopSize
+    
+    # Cut down the arrays if simulation stops before NumSteps
+    if np.any(np.isnan(ts)):
+        notnan = ~np.isnan(ts)
+        ts = ts[notnan]
+        Ss, Ias, Ibs, Ras, Rbs = Ss[notnan, :], Ias[notnan, :], Ibs[notnan, :], Ras[notnan, :], Rbs[notnan, :]
+        StatusBrief = StatusBrief[notnan, :]
+    return ts, Ss, Ias, Ibs, Ras, Rbs, StatusBrief, PopSize, GrpSizes
 
 def calibrate(beta, InfD, ImmD):
     NumSteps = 50000
     TargetPopSize = 1000
-    ts, Ss, Ias, Ibs, Ras, Rbs, Status, PopSize = simulate(beta, InfD, ImmD, NumSteps, TargetPopSize)
+    ts, Ss, Ias, Ibs, Ras, Rbs, Status, PopSize, GrpSizes = simulate(beta, InfD, ImmD, NumSteps, TargetPopSize)
     return ts, Ss/PopSize, Ias/PopSize, Ibs/PopSize, Ras/PopSize, Rbs/PopSize, Status
+
 
 def sampler(SamplingTimes, ts, xs):
     Sample = np.empty(SamplingTimes.shape)
@@ -177,10 +187,11 @@ def sampler_for_status(SamplingTimes, ts, status):
                 break
     return Sample
 
+
 def calibrate2(beta, InfD, ImmD, batch_size = 1, random_state = None):
     NumSteps = 50000
     TargetPopSize = 1000
-    ts, Ss, Ias, Ibs, Ras, Rbs, Status, PopSize = simulate(beta, InfD, ImmD, NumSteps, TargetPopSize)
+    ts, Ss, Ias, Ibs, Ras, Rbs, Status, PopSize, GrpSizes = simulate(beta, InfD, ImmD, NumSteps, TargetPopSize)
     SamplingTimes = np.arange(0, ts[-1], 30)
     s_sample = sampler(SamplingTimes, ts, np.sum(Ss, 1))
     i_sample = sampler(SamplingTimes, ts, np.sum(Ias, 1) + np.sum(Ibs, 1))
@@ -196,6 +207,69 @@ def calibrate2(beta, InfD, ImmD, batch_size = 1, random_state = None):
             summary_stat[jj] = 0.0
     return (SamplingTimes, s_sample, i_sample, r_sample), np.array([summary_stat])
 
+
+def calibrate_age_prev(beta, InfD, ImmD):
+    NumSteps = 50000
+    TargetPopSize = 1000
+    ts, Ss, Ias, Ibs, Ras, Rbs, Status, PopSize, GrpSizes = simulate(beta, InfD, ImmD, NumSteps, TargetPopSize)
+
+    NumObs = 4
+    summary_stat = np.empty((NumObs, len(GrpSizes)))
+    summary_stat[:] = np.nan
+
+    if ts[-1]>30*NumObs:
+        SamplingTimes = np.arange(0, ts[-1], 30)
+        I = Ias + Ibs
+        for counter in range(len(GrpSizes)):
+                summary_stat[:, counter] = (sampler(SamplingTimes, ts, I[:, counter])/GrpSizes[counter])[-NumObs:]
+        i_sample = sampler(SamplingTimes, ts, np.sum(Ias, 1) + np.sum(Ibs, 1))
+    # If outbreak dies out then replace NaNs in the prevalence sample with zeros
+    else:
+        SamplingTimes = np.nan
+        i_sample = np.nan
+        summary_stat[:] = 0.
+        
+    return (SamplingTimes, i_sample), summary_stat
+    #return summary_stat.flatten()
+
+def calibrate_status(beta, InfD, ImmD, batch_size = 1):
+    NumSteps = 50000
+    TargetPopSize = 1000
+    ts, Ss, Ias, Ibs, Ras, Rbs, Status, PopSize, GrpSizes = simulate(beta, InfD, ImmD, NumSteps, TargetPopSize)
+
+    NumObs = 4
+    Pathways = np.array([[0, 0, 0, 0], [0, 0, 0, 1],[0, 1, 0, 0],[0, 0, 1, 0],[1, 0, 0, 0],[0, 1, 0, 1],[1, 1, 0, 0],[0, 1, 1, 0],
+                         [1, 0, 1, 0],[1, 0, 0, 1],[0, 0, 1, 1],[1, 1, 0, 1],[1, 1, 1, 0],[0, 1, 1, 1],[1, 0, 1, 1],[1, 1, 1, 1]])
+    
+    PathwayCounts = np.zeros(len(Pathways))
+    
+    summary_stat = np.empty((NumObs, len(GrpSizes)))
+    summary_stat[:] = np.nan
+
+    if ts[-1]>30*NumObs:
+        SamplingTimes = np.arange(0, ts[-1], 30)
+        Status_sample = sampler_for_status(SamplingTimes, ts, Status)[-NumObs:]
+        X = np.unique(Status_sample.T, return_counts=True, axis = 0)
+        for counter, Pathway in enumerate(Pathways):
+            for x, y in zip(X[0], X[1]):
+                if np.all(x == Pathway):
+                    PathwayCounts[counter] = y
+    else: # If outbreak dies out then the [0, 0, 0, 0] pathway has PopSize counts
+        PathwayCounts[0] = PopSize
+    
+    PathwayPs = PathwayCounts/np.sum(PathwayCounts)
+        
+    return Pathways, np.array([PathwayPs])
+
+
+def vectorize_wrapper(betas, InfDs, ImmDs, batch_size = 1, random_state = None):
+    summary_stats = [0]*batch_size
+    for counter, (beta, InfD, ImmD) in enumerate(zip(betas, InfDs, ImmDs)):
+        summary_stat = calibrate_age_prev(beta, InfD, ImmD)
+        summary_stats[counter] = summary_stat
+    return np.array(summary_stats)
+    
+    
 #%%
 if __name__ == '__main__':
     ''' Scheme = SIIRRS '''

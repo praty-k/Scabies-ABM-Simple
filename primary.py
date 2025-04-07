@@ -142,12 +142,12 @@ def simulate(beta, InfD, ImmD, NumSteps, TargetPopSize):
             
         Ss[counter, :], Ias[counter, :], Ibs[counter, :], Ras[counter, :], Rbs[counter, :] = S, Ia, Ib, Ra, Rb
         StatusBrief[counter, :] = (StatusFlat == 1) | (StatusFlat == 2)
-    return ts, Ss, Ias, Ibs, Ras, Rbs, StatusBrief, PopSize
+    return ts, Ss, Ias, Ibs, Ras, Rbs, StatusBrief, PopSize, GrpSizes
 
 def calibrate(beta, InfD, ImmD):
     NumSteps = 50000
     TargetPopSize = 1000
-    ts, Ss, Ias, Ibs, Ras, Rbs, Status, PopSize = simulate(beta, InfD, ImmD, NumSteps, TargetPopSize)
+    ts, Ss, Ias, Ibs, Ras, Rbs, Status, PopSize, GrpSizes = simulate(beta, InfD, ImmD, NumSteps, TargetPopSize)
     return ts, Ss/PopSize, Ias/PopSize, Ibs/PopSize, Ras/PopSize, Rbs/PopSize, Status
 
 def sampler(SamplingTimes, ts, xs):
@@ -173,7 +173,7 @@ def sampler_for_status(SamplingTimes, ts, status):
 def calibrate2(beta, InfD, ImmD, batch_size = 1, random_state = None):
     NumSteps = 50000
     TargetPopSize = 1000
-    ts, Ss, Ias, Ibs, Ras, Rbs, Status, PopSize = simulate(beta, InfD, ImmD, NumSteps, TargetPopSize)
+    ts, Ss, Ias, Ibs, Ras, Rbs, Status, PopSize, GrpSizes = simulate(beta, InfD, ImmD, NumSteps, TargetPopSize)
     SamplingTimes = np.arange(0, ts[-1], 30)
     s_sample = sampler(SamplingTimes, ts, np.sum(Ss, 1))
     i_sample = sampler(SamplingTimes, ts, np.sum(Ias, 1) + np.sum(Ibs, 1))
@@ -188,6 +188,8 @@ def calibrate2(beta, InfD, ImmD, batch_size = 1, random_state = None):
         if np.isnan(summary_stat[jj]):
             summary_stat[jj] = 0.0
     return (SamplingTimes, s_sample, i_sample, r_sample), np.array([summary_stat])
+
+
 
 if __name__ == '__main__':
     ''' Scheme = SIIRRS '''

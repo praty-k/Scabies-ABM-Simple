@@ -12,7 +12,7 @@ import numpy as np
 import scipy
 import logging
 
-import primary
+import primary_numba_test as primary
 #%%
 seed = 42
 rng = np.random.default_rng(seed)
@@ -47,3 +47,21 @@ end = time.time()
 
 print(end-start, 'seconds')
 
+#%%
+InfD = elfi.Prior(scipy.stats.uniform, 7, 56-7)
+
+Y2 = elfi.Simulator(primary.calibrate2, beta, InfD, ImmD_true, observed = y_obs)
+
+S2 = elfi.Summary(extract_summary_stats, Y2)
+
+d2 = elfi.Distance('euclidean', S2)
+
+rej2 = elfi.Rejection(d2, batch_size = 1)
+
+start = time.time()
+result2 = rej2.sample(n_samples = 100, quantile = .05)
+end = time.time()
+
+print(end-start, 'seconds')
+
+#%%
