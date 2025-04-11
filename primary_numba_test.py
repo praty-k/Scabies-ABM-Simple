@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import time
 #import seaborn as sns
 from numba import jit
-np.random.seed(seed = 42)
+#np.random.seed(seed = 42)
 
 #####
 
@@ -101,8 +101,8 @@ def step(Event, S, Ia, Ib, Ra, Rb, Status, GrpSizes, NumGrps, rnd):
         Status[GrpNum, SelectedAgent] = 0
     return S, Ia, Ib, Ra, Rb, Status
 
-@jit
-def simulate(beta, InfD, ImmD, NumSteps, TargetPopSize):
+
+def simulate(beta, InfD, ImmD, NumSteps, TargetPopSize, random_state):
     gamma = 2/InfD
     mu = 2/ImmD
     
@@ -133,7 +133,7 @@ def simulate(beta, InfD, ImmD, NumSteps, TargetPopSize):
     Ss[0, :], Ias[0, :], Ibs[0, :], Ras[0, :], Rbs[0, :] = S, Ia, Ib, Ra, Rb
     
     #Pre-generated random numbers
-    rnds = np.random.uniform(0, 1, size = NumSteps)
+    rnds = random_state.uniform(0, 1, size = NumSteps)
     for counter in range(1, NumSteps):
         if np.any(S<0) or np.any(Ia<0) or np.any(Ib<0) or np.any(Ra<0) or np.any(Rb<0):
             print('Error, negative values')
@@ -141,8 +141,8 @@ def simulate(beta, InfD, ImmD, NumSteps, TargetPopSize):
         elif np.sum(Ia + Ib)!=0:
             RateSum, AllPs, AllRates = compute_rates_probs(beta, gamma, mu, PopSize, S, Ia, Ib, Ra, Rb, ContactMatrix)
             #Event = np.random.choice(Events, size = 1, p = AllPs)[0]
-            Event = Events[np.searchsorted(np.cumsum(AllPs), np.random.rand(1)[0])]
-            EventTimeStep = np.random.exponential(scale = 1/RateSum)
+            Event = Events[np.searchsorted(np.cumsum(AllPs), random_state.rand(1)[0])]
+            EventTimeStep = random_state.exponential(scale = 1/RateSum)
             ts[counter] = ts[counter-1]+EventTimeStep
             S, Ia, Ib, Ra, Rb, StatusFull = step(Event, S, Ia, Ib, Ra, Rb, StatusFull, GrpSizes, NumGrps, rnds[counter])
             StatusFlat = StatusFull.flatten()
@@ -189,9 +189,10 @@ def sampler_for_status(SamplingTimes, ts, status):
 
 
 def calibrate2(beta, InfD, ImmD, batch_size = 1, random_state = None):
+    random_state = random_state or np.random
     NumSteps = 50000
     TargetPopSize = 1000
-    ts, Ss, Ias, Ibs, Ras, Rbs, Status, PopSize, GrpSizes = simulate(beta, InfD, ImmD, NumSteps, TargetPopSize)
+    ts, Ss, Ias, Ibs, Ras, Rbs, Status, PopSize, GrpSizes = simulate(beta, InfD, ImmD, NumSteps, TargetPopSize, random_state)
     NumObs = 4
     SamplingTimes = np.arange(0, NumObs, 1)*30+364
     if len(ts)>0:
@@ -239,9 +240,10 @@ def calibrate_age_prev(beta, InfD, ImmD):
     #return summary_stat.flatten()
 
 def calibrate_status(beta, InfD, ImmD, batch_size = 1, random_state = None):
+    random_state = random_state or np.random
     NumSteps = 50000
     TargetPopSize = 1000
-    ts, Ss, Ias, Ibs, Ras, Rbs, Status, PopSize, GrpSizes = simulate(beta, InfD, ImmD, NumSteps, TargetPopSize)
+    ts, Ss, Ias, Ibs, Ras, Rbs, Status, PopSize, GrpSizes = simulate(beta, InfD, ImmD, NumSteps, TargetPopSize, random_state)
 
     NumObs = 4
     Pathways = np.array([[0, 0, 0, 0], [0, 0, 0, 1],[0, 1, 0, 0],[0, 0, 1, 0],[1, 0, 0, 0],[0, 1, 0, 1],[1, 1, 0, 0],[0, 1, 1, 0],
