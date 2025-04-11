@@ -101,8 +101,8 @@ def step(Event, S, Ia, Ib, Ra, Rb, Status, GrpSizes, NumGrps, rnd):
         Status[GrpNum, SelectedAgent] = 0
     return S, Ia, Ib, Ra, Rb, Status
 
-
-def simulate(beta, InfD, ImmD, NumSteps, TargetPopSize, random_state):
+@jit
+def simulate(beta, InfD, ImmD, NumSteps, TargetPopSize, rnds_for_step, rnds_for_event, rnds_for_time):
     gamma = 2/InfD
     mu = 2/ImmD
     
@@ -132,8 +132,6 @@ def simulate(beta, InfD, ImmD, NumSteps, TargetPopSize, random_state):
     Ss, Ias, Ibs, Ras, Rbs = np.zeros((NumSteps, NumGrps)), np.zeros((NumSteps, NumGrps)), np.zeros((NumSteps, NumGrps)), np.zeros((NumSteps, NumGrps)), np.zeros((NumSteps, NumGrps))
     Ss[0, :], Ias[0, :], Ibs[0, :], Ras[0, :], Rbs[0, :] = S, Ia, Ib, Ra, Rb
     
-    #Pre-generated random numbers
-    rnds = random_state.uniform(0, 1, size = NumSteps)
     for counter in range(1, NumSteps):
         if np.any(S<0) or np.any(Ia<0) or np.any(Ib<0) or np.any(Ra<0) or np.any(Rb<0):
             print('Error, negative values')
@@ -141,10 +139,11 @@ def simulate(beta, InfD, ImmD, NumSteps, TargetPopSize, random_state):
         elif np.sum(Ia + Ib)!=0:
             RateSum, AllPs, AllRates = compute_rates_probs(beta, gamma, mu, PopSize, S, Ia, Ib, Ra, Rb, ContactMatrix)
             #Event = np.random.choice(Events, size = 1, p = AllPs)[0]
-            Event = Events[np.searchsorted(np.cumsum(AllPs), random_state.rand(1)[0])]
-            EventTimeStep = random_state.exponential(scale = 1/RateSum)
+            Event = Events[np.searchsorted(np.cumsum(AllPs), rnds_for_event[counter])]
+            #EventTimeStep = random_state.exponential(scale = 1/RateSum)
+            EventTimeStep = -1/RateSum * np.log(1 - rnds_for_time[counter])
             ts[counter] = ts[counter-1]+EventTimeStep
-            S, Ia, Ib, Ra, Rb, StatusFull = step(Event, S, Ia, Ib, Ra, Rb, StatusFull, GrpSizes, NumGrps, rnds[counter])
+            S, Ia, Ib, Ra, Rb, StatusFull = step(Event, S, Ia, Ib, Ra, Rb, StatusFull, GrpSizes, NumGrps, rnds_for_step[counter])
             StatusFlat = StatusFull.flatten()
             StatusFlat = StatusFlat[~np.isnan(StatusFlat)]
         else:
@@ -163,7 +162,7 @@ def simulate(beta, InfD, ImmD, NumSteps, TargetPopSize, random_state):
 def calibrate(beta, InfD, ImmD):
     NumSteps = 50000
     TargetPopSize = 1000
-    ts, Ss, Ias, Ibs, Ras, Rbs, Status, PopSize, GrpSizes = simulate(beta, InfD, ImmD, NumSteps, TargetPopSize)
+    ts, Ss, Ias, Ibs, Ras, Rbs, Status, PopSize, GrpSizes = simulate(beta, InfD, ImmD, NumSteps, TargetPopSize, rnds_for_step, rnds_for_event, rnds_for_time)
     return ts, Ss/PopSize, Ias/PopSize, Ibs/PopSize, Ras/PopSize, Rbs/PopSize, Status
 
 
@@ -192,7 +191,11 @@ def calibrate2(beta, InfD, ImmD, batch_size = 1, random_state = None):
     random_state = random_state or np.random
     NumSteps = 50000
     TargetPopSize = 1000
-    ts, Ss, Ias, Ibs, Ras, Rbs, Status, PopSize, GrpSizes = simulate(beta, InfD, ImmD, NumSteps, TargetPopSize, random_state)
+    #Pre-generated random numbers
+    rnds_for_step = random_state.uniform(0, 1, size = NumSteps)
+    rnds_for_event = random_state.uniform(0, 1, size = NumSteps)
+    rnds_for_time = random_state.uniform(0, 1, size = NumSteps)
+    ts, Ss, Ias, Ibs, Ras, Rbs, Status, PopSize, GrpSizes = simulate(beta, InfD, ImmD, NumSteps, TargetPopSize, rnds_for_step, rnds_for_event, rnds_for_time)
     NumObs = 4
     SamplingTimes = np.arange(0, NumObs, 1)*30+364
     if len(ts)>0:
@@ -243,7 +246,11 @@ def calibrate_status(beta, InfD, ImmD, batch_size = 1, random_state = None):
     random_state = random_state or np.random
     NumSteps = 50000
     TargetPopSize = 1000
-    ts, Ss, Ias, Ibs, Ras, Rbs, Status, PopSize, GrpSizes = simulate(beta, InfD, ImmD, NumSteps, TargetPopSize, random_state)
+    #Pre-generated random numbers
+    rnds_for_step = random_state.uniform(0, 1, size = NumSteps)
+    rnds_for_event = random_state.uniform(0, 1, size = NumSteps)
+    rnds_for_time = random_state.uniform(0, 1, size = NumSteps)
+    ts, Ss, Ias, Ibs, Ras, Rbs, Status, PopSize, GrpSizes = simulate(beta, InfD, ImmD, NumSteps, TargetPopSize, rnds_for_step, rnds_for_event, rnds_for_time)
 
     NumObs = 4
     Pathways = np.array([[0, 0, 0, 0], [0, 0, 0, 1],[0, 1, 0, 0],[0, 0, 1, 0],[1, 0, 0, 0],[0, 1, 0, 1],[1, 1, 0, 0],[0, 1, 1, 0],
