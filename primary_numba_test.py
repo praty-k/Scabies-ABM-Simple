@@ -126,7 +126,7 @@ def simulate(beta, InfD, ImmD, NumSteps, TargetPopSize):
     State = np.zeros(TargetPopSize)
     Events = np.arange(0, 5*NumGrps, 1) # 5 because there are five states, S, Ia, Ib, Ra, Rb
     S, Ia, Ib, Ra, Rb, StatusFull = init_vars(PopSize, NumGrps, GrpSizes)
-    ts = np.empty(NumSteps)
+    ts = np.zeros(NumSteps)
     ts[1:] = np.nan
     StatusBrief = np.empty((NumSteps, PopSize))
     Ss, Ias, Ibs, Ras, Rbs = np.zeros((NumSteps, NumGrps)), np.zeros((NumSteps, NumGrps)), np.zeros((NumSteps, NumGrps)), np.zeros((NumSteps, NumGrps)), np.zeros((NumSteps, NumGrps))
