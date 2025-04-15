@@ -280,13 +280,9 @@ def calibrate_status(beta, InfD, ImmD, batch_size = 1, random_state = None):
     return Pathways, np.array([PathwayPs])
 
 
-def vectorize_wrapper(betas, InfDs, ImmDs, batch_size = 1, random_state = None):
-    summary_stats = [0]*batch_size
-    for counter, (beta, InfD, ImmD) in enumerate(zip(betas, InfDs, ImmDs)):
-        summary_stat = calibrate_age_prev(beta, InfD, ImmD)
-        summary_stats[counter] = summary_stat
-    return np.array(summary_stats)
-    
+def calibrate_status_parallel(beta, InfD, ImmD, batch_size = 1, random_state = None):
+    y = calibrate_status(beta, InfD, ImmD, batch_size = batch_size, random_state = random_state)
+    return y[1][0]
     
 #%%
 if __name__ == '__main__':
