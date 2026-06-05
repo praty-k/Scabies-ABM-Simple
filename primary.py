@@ -14,6 +14,24 @@ rng = np.random.default_rng(seed = 42)
 #####
 
 def create_status_vars(PopSize, GrpSizes, NumGrps):
+    '''
+    This function initialises and returns an multi-dimensional array that stores the infection status of all agents in the population
+
+    Parameters
+    ----------
+    PopSize : int
+        Size of population.
+    GrpSizes : array of ints
+        An array that stores the sizes of age groups (or population of each age group).
+    NumGrps : int
+        Number of age groups.
+
+    Returns
+    -------
+    Status : Array (NumGrps, max(GrpSizes))
+        The array has many dummy cells that will not be used because it is of shape NumGrps * maximum of GrpSizes. 
+        The cells of the array that are dummy are initialised with NaN, while those that will be used and correspond to agents are initialised with zero.
+    '''
     ID = np.empty((NumGrps, np.max(GrpSizes)))
     Status = np.empty((NumGrps, np.max(GrpSizes)))
     ID[:]=np.nan
@@ -24,9 +42,30 @@ def create_status_vars(PopSize, GrpSizes, NumGrps):
     return Status   
 
 def init_vars(PopSize, NumGrps, GrpSizes): #Initialises with one infection in each group
-    S = GrpSizes-1 #Needs to be an array containing number of people in each S compartment
-    Ia = np.ones(NumGrps)
-    Ib = np.zeros(NumGrps)
+    '''
+    This function initialises the outbreak with one infection in each group. The seed infection is the first agent of each age group.
+    
+    Parameters
+    ----------
+    PopSize : int
+        DESCRIPTION.
+    NumGrps : int
+        DESCRIPTION.
+    GrpSizes : array of ints
+        DESCRIPTION.
+
+    Returns
+    -------
+    S: Array with number of susceptibles in each age group.
+    Ia: Array with number of infected (a) in each age group
+    Ib: Array with number of infected (b) ....
+    Ra: Array with number of recovered (a) ....
+    Rb: Array with number of recovered (b) ....
+    Status: result of function create_status_vars()
+    '''
+    S = GrpSizes-1 #Needs to be an array containing number of people in each S compartment. 
+    Ia = np.ones(NumGrps)  # Initial infecteds in each age group
+    Ib = np.zeros(NumGrps) 
     Ra = np.zeros(NumGrps)
     Rb = np.zeros(NumGrps)
     Status = create_status_vars(PopSize, GrpSizes, NumGrps)
@@ -35,19 +74,105 @@ def init_vars(PopSize, NumGrps, GrpSizes): #Initialises with one infection in ea
 
 # Computing Rates
 def compute_rates_probs(beta, gamma, mu, PopSize, S, Ia, Ib, Ra, Rb, ContactMatrix):
+    '''
+    This function computes the rates of transitions for a Gillespie simulation
+    Parameters
+    ----------
+    beta : float
+        transmission rate.
+    gamma : float
+        2 / Infectious duration.
+    mu : float
+        2 / Immunity duration (TBC).
+    PopSize : int
+        DESCRIPTION.
+    S : TYPE
+        DESCRIPTION.
+    Ia : TYPE
+        DESCRIPTION.
+    Ib : TYPE
+        DESCRIPTION.
+    Ra : TYPE
+        DESCRIPTION.
+    Rb : TYPE
+        DESCRIPTION.
+    ContactMatrix : np.array
+        DESCRIPTION.
+
+    Returns
+    -------
+    RateSum : TYPE
+        DESCRIPTION.
+    AllPs : TYPE
+        DESCRIPTION.
+    AllRates : TYPE
+        DESCRIPTION.
+
+    '''
+    # Rates at which an agent in every age group leaves S and becomes I(a)
     RatesLeaveS = beta/PopSize * S * (np.sum(ContactMatrix*Ia, 1) + np.sum(ContactMatrix*Ib, 1))
+    # Rates at which an agent in every age leaves I(a) 
     RatesLeaveIa = gamma*Ia
+    # Rates at which an agent in every age group leaves I(b)
     RatesLeaveIb = gamma*Ib
+    # Rates at which an agent in every age group leaves R(a) 
     RatesLeaveRa = mu*Ra
+    # Rates at which an agent in every age group leaves R(b) and return to S
     RatesLeaveRb = mu*Rb
-    #return RatesLeaveS, RatesLeaveIa, RatesLeaveIb, RatesLeaveRa, RatesLeaveRb    
+    
+    RatesMedicated = 
+    
+    # Store all rates in an array
     AllRates = np.concatenate((RatesLeaveS, RatesLeaveIa, RatesLeaveIb, RatesLeaveRa, RatesLeaveRb))
+    # Sum of rates of all events
     RateSum = np.sum(AllRates)
+    # Conditional probability of events given that an event happtns
     AllPs = AllRates/RateSum
     return RateSum, AllPs, AllRates
 
 ## A function that takes Event as input and does the operation on state variables
 def step(Event, S, Ia, Ib, Ra, Rb, Status, GrpSizes, NumGrps, rnd):
+    '''
+
+    Parameters
+    ----------
+    Event : TYPE
+        DESCRIPTION.
+    S : TYPE
+        DESCRIPTION.
+    Ia : TYPE
+        DESCRIPTION.
+    Ib : TYPE
+        DESCRIPTION.
+    Ra : TYPE
+        DESCRIPTION.
+    Rb : TYPE
+        DESCRIPTION.
+    Status : TYPE
+        DESCRIPTION.
+    GrpSizes : TYPE
+        DESCRIPTION.
+    NumGrps : TYPE
+        DESCRIPTION.
+    rnd : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    S : TYPE
+        DESCRIPTION.
+    Ia : TYPE
+        DESCRIPTION.
+    Ib : TYPE
+        DESCRIPTION.
+    Ra : TYPE
+        DESCRIPTION.
+    Rb : TYPE
+        DESCRIPTION.
+    Status : TYPE
+        DESCRIPTION.
+
+    '''
     if Event<NumGrps:
         S[Event]-=1
         Ia[Event]+=1
@@ -97,10 +222,47 @@ def step(Event, S, Ia, Ib, Ra, Rb, Status, GrpSizes, NumGrps, rnd):
 
 
 def simulate(beta, InfD, ImmD, NumSteps, TargetPopSize):
+    '''
+
+    Parameters
+    ----------
+    beta : TYPE
+        DESCRIPTION.
+    InfD : TYPE
+        DESCRIPTION.
+    ImmD : TYPE
+        DESCRIPTION.
+    NumSteps : TYPE
+        DESCRIPTION.
+    TargetPopSize : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    ts : TYPE
+        DESCRIPTION.
+    Ss : TYPE
+        DESCRIPTION.
+    Ias : TYPE
+        DESCRIPTION.
+    Ibs : TYPE
+        DESCRIPTION.
+    Ras : TYPE
+        DESCRIPTION.
+    Rbs : TYPE
+        DESCRIPTION.
+    StatusBrief : TYPE
+        DESCRIPTION.
+    PopSize : TYPE
+        DESCRIPTION.
+    GrpSizes : TYPE
+        DESCRIPTION.
+
+    '''
     gamma = 2/InfD
     mu = 2/ImmD
     
-    GrpSizes = np.array([int(0.3*TargetPopSize), 
+    GrpSizes = np.array([int(0.3*TargetPopSize),  #  Group sizes are hardcoded -- need to change at some point
                             int(0.25*TargetPopSize), 
                             int(0.25*TargetPopSize), 
                             int(0.1*TargetPopSize), 
@@ -240,7 +402,7 @@ if __name__ == '__main__':
                 plt.plot(ts, np.sum(ras, 1), label = 'Recovered (a)')
                 plt.plot(ts, np.sum(rbs, 1), label = 'Recovered (b)')
                 plt.legend()
-                plt.savefig(f'ParamSpaceExplore/{beta=:.2f}_{InfD=:.2f}_{ImmD=:.2f}.png', dpi = 300)
+                #plt.savefig(f'ParamSpaceExplore/{beta=:.2f}_{InfD=:.2f}_{ImmD=:.2f}.png', dpi = 300)
                 plt.close()
                 Prev = (np.sum(ias, 1) + np.sum(ibs, 1))[-1]
                 Prevalence[ii, jj, kk] = Prev
